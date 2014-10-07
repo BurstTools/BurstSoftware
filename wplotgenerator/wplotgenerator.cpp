@@ -7,14 +7,14 @@ Based on the linux c-port of: Markus Tervooren <info@bchain.info>, Burst: BURST-
 Implementation of Shabal is taken from: http://www.shabal.com/?p=198 (single hash SSE 4 - disassembled to convert from AT&T-Syntax to MASM-Syntax - ported to Microsoft x64 calling convention)
 Implementation of Multi-Shabal is taken from: http://www.shabal.com/?p=140 (multiple hash SSE 4 / AVX - ported AVX2)
 
-Usage: wplotgenerator <account id> <start nonce> <nonces> <stagger size> <threads> [/async]
-<account id> = your numeric acount id
-<start nonce> = where you want to start plotting, if this is your first HDD then set it to 0, other wise set it to your last hdd's [start plot] + [no. plots]
-<nonces> = how many nonces you want to plot - 200gb is about 800000 nonces
-<stagger size> = set it to 2x the amount of MB RAM your system has (with async 1x the RAM your system has)
-<threads> = How many CPU threads you want to utilise
-options:
-/async ... writing plots from a background-thread for best throughput (needs twice as much RAM)
+Usage: wplotgenerator <account id> <start nonce> <number of nonces> <stagger size> <threads> [/async]
+         <account id> = your numeric acount id
+         <start nonce> = where you want to start plotting, if this is your first HDD then set it to 0, other wise set it to your last hdd's <start nonce> + <number of nonces>
+         <number of nonces> = how many nonces you want to plot - 200gb is about 800000 nonces
+         <stagger size> = set it to 2x the amount of MB RAM your system has (with async 1x the RAM your system has)
+         <threads> = How many CPU threads you want to utilise
+       options:
+         /async ... writing plots from a background-thread for best throughput (needs twice as much RAM)
 */
 
 #include "stdafx.h"
@@ -237,14 +237,16 @@ int _tmain(int argc, _TCHAR* argv[])
   test_hashes(); // test SSE/AVX1/AVX2 hashes, test multi-shabal for SSE/AVX1/AVX2, test multi-shabal256 for AVX2
 #endif // #ifdef DEBUG
 
-  printf("Windows Burstcoin plot generator V1.15\n");
+  printf("Windows Burstcoin plot generator V1.16 by Cerr Janror\n\n");
+  printf("Please consider donating some of your newly mined Bursts to support further development:\n");
+  printf("    BURST-LNVN-5M4L-S9KP-H5AAC\n\n");
 
   if (argc != 6 && argc != 7)
   {
-    printf("Usage: wplotgenerator <account id> <start nonce> <nonces> <stagger size> <threads> [/async]\n");
+    printf("Usage: wplotgenerator <account id> <start nonce> <number of nonces> <stagger size> <threads> [/async]\n");
     printf("         <account id> = your numeric acount id\n");
-    printf("         <start nonce> = where you want to start plotting, if this is your first HDD then set it to 0, other wise set it to your last hdd's [start plot] + [no. plots]\n");
-    printf("         <no.nonces> = how many nonces you want to plot - 200gb is about 800000 nonces\n");
+    printf("         <start nonce> = where you want to start plotting, if this is your first HDD then set it to 0, other wise set it to your last hdd's <start nonce> + <number of nonces>\n");
+    printf("         <number of nonces> = how many nonces you want to plot - 200gb is about 800000 nonces\n");
     printf("         <stagger size> = set it to 2x the amount of MB RAM your system has (with async 1x the RAM your system has)\n");
     printf("         <threads> = How many CPU threads you want to utilise\n");
     printf("       options:\n");
@@ -351,30 +353,33 @@ int _tmain(int argc, _TCHAR* argv[])
   struct _stat64 fileStat;
   if (_fstat64(ofd, &fileStat) == 0 && fileStat.st_size > 0)
   {
-    printf("Opened existing file with file size of %llu bytes.\n", fileStat.st_size);
-    if (fileStat.st_size % (staggersize * PLOT_SIZE) == 0)
+    printf("Opened existing file with a size of %lld bytes.\n", fileStat.st_size);
+    if (fileStat.st_size % ((unsigned long long)staggersize * PLOT_SIZE) != 0)
     {
-      run = fileStat.st_size / PLOT_SIZE;
-      startnonce += run;
+      fileStat.st_size = fileStat.st_size / ((unsigned long long)staggersize * PLOT_SIZE) * ((unsigned long long)staggersize * PLOT_SIZE);
+      printf("File size doesn't match a multiple of staggersize and plotsize. Restarting at %lld bytes.\n", fileStat.st_size);
+    }
 
-      if (run < nonces)
+    run = fileStat.st_size / PLOT_SIZE;
+    startnonce += run;
+
+    if (run < nonces)
+    {
+      printf("Continuing with startnounce %llu in run %ld.\n", startnonce, run);
+      if (_lseeki64(ofd, fileStat.st_size, SEEK_SET) != fileStat.st_size)
       {
-        printf("Continuing with startnounce %llu in run %ld.\n", startnonce, run);
-        if (_lseeki64(ofd, 0, SEEK_END) != fileStat.st_size)
-        {
-          printf("Error seeking to end of file. Delete the existing file to start over.\n");
-          exit(-1);
-        }
-      }
-      else
-      {
-        printf("File is already finished. Delete the existing file to start over.\n");
+        printf("Error seeking to new position. Delete the existing file to start over.\n");
         exit(-1);
       }
     }
-    else
+    else if (run == nonces)
     {
-      printf("Error appending to file. File size doesnt match a multiple of staggersize and plotsize. Delete the existing file to start over.\n");
+      printf("File is already finished. Delete the existing file to start over.\n");
+      exit(-1);
+    }
+    else 
+    {
+      printf("The existing file is to big for the specified arguments. Probably the content doesn't match the file name.\n");
       exit(-1);
     }
   }
