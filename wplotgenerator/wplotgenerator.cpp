@@ -237,7 +237,7 @@ int _tmain(int argc, _TCHAR* argv[])
   test_hashes(); // test SSE/AVX1/AVX2 hashes, test multi-shabal for SSE/AVX1/AVX2, test multi-shabal256 for AVX2
 #endif // #ifdef DEBUG
 
-  printf("Windows Burstcoin plot generator V1.16 by Cerr Janror\n\n");
+  printf("Windows Burstcoin plot generator V1.17 by Cerr Janror\n\n");
   printf("Please consider donating some of your newly mined Bursts to support further development:\n");
   printf("    BURST-LNVN-5M4L-S9KP-H5AAC\n\n");
 
@@ -275,7 +275,7 @@ int _tmain(int argc, _TCHAR* argv[])
   else if (bIsAVX1Available)
     szCodePath = " - using AVX codepath";
 
-  printf("Creating plots for nonces %llu to %llu (%u GB) using %u MB memory and %u threads%s%s\n",
+  printf("Creating plots for nonces %llu to %llu (%u GB) using %u MB memory and %u threads%s%s...\n",
     startnonce,
     (startnonce + nonces),
     (unsigned int)(nonces / 4 / 1024),
@@ -291,45 +291,49 @@ int _tmain(int argc, _TCHAR* argv[])
     exit(-1);
   }
 
-  printf("Setting priority class 'below normal'.\n");
+  printf("Setting priority class 'below normal'...\n");
   if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS))
   {
-    printf("Warning: Setting priority class 'below normal' returned with error %lu.", ::GetLastError());
+    printf("Warning: Setting priority class 'below normal' returned with error %lu.\n", ::GetLastError());
     exit(-1);
   }
 
+  printf("Allocating memory...\n");
   cache = (char*)calloc(PLOT_SIZE, staggersize);
 
   if (cache == NULL)
   {
-    printf("Error allocating memory. Try lower stagger size.");
+    printf("Error allocating memory. Try lower stagger size.\n");
     exit(-1);
   }
 
   if (bAsync)
   {
+    printf("Allocating secondary buffer...\n");
     write_cache = (char*)calloc(PLOT_SIZE, staggersize);
 
     if (write_cache == NULL)
     {
-      printf("Error allocating memory for secondary buffer. Try lower stagger size or disable /async.");
+      printf("Error allocating memory for secondary buffer. Try lower stagger size or disable /async.\n");
       exit(-1);
     }
   }
   else
     write_cache = cache;
 
+  printf("Checking directory...\n");
   _mkdir("plots");
 
   char name[100];
   sprintf_s(name, "plots/%llu_%llu_%u_%u", addr, startnonce, nonces, staggersize);
 
+  printf("Opening file...\n");
   int ofd = -1;
   _sopen_s(&ofd, name, _O_CREAT | O_WRONLY | _O_BINARY, _SH_DENYWR, _S_IREAD | _S_IWRITE);
   if (ofd < 0)
   {
     printf("Error opening file %s\n", name);
-    exit(0);
+    exit(-1);
   }
 
   // Threads:
@@ -350,6 +354,7 @@ int _tmain(int argc, _TCHAR* argv[])
 
   unsigned long long run = 0;
 
+  printf("Checking file size...\n");
   struct _stat64 fileStat;
   if (_fstat64(ofd, &fileStat) == 0 && fileStat.st_size > 0)
   {
@@ -399,12 +404,14 @@ int _tmain(int argc, _TCHAR* argv[])
   dwStacksize += 2 * 1024 * 1024; // 2+2 MB
 #endif
 
+  printf("Choosing worker routine...\n");
   LPTHREAD_START_ROUTINE lpWorkerStartAddress = SSE4::work_i;
   if (bIsAVX2Available)
     lpWorkerStartAddress = AVX2::work_i;
   else if (bIsAVX1Available)
     lpWorkerStartAddress = AVX1::work_i;
 
+  printf("0 Percent done. Calculating first stagger...                            ", percent, speed, avgspeed);
   for (; run < nonces; run += staggersize)
   {
     unsigned long long starttime = getMS();
@@ -431,7 +438,7 @@ int _tmain(int argc, _TCHAR* argv[])
       bool bWriterThreadReady = WaitForMultipleObjects(threads + 1, worker_threads, FALSE, INFINITE) == (WAIT_OBJECT_0 + threads);
       if (bWriterThreadReady)
       {
-        printf("\r%i Percent done. %i nonces/minute (avg %i - data written)                ", percent, speed, avgspeed);
+        printf("\r%i Percent done. %i nonces/minute (avg %i - data written)...             ", percent, speed, avgspeed);
         bRun = false;
       }
       else
@@ -453,7 +460,7 @@ int _tmain(int argc, _TCHAR* argv[])
     }
 
     percent = (int)(100 * (run + staggersize) / nonces);
-    printf("\r%i Percent calculated. calculating leftover nonces                       ", percent);
+    printf("\r%i Percent calculated. calculating leftover nonces...                    ", percent);
 
     // Run leftover nonces
     for (i = threads * noncesperthread; i < staggersize; i++)
@@ -463,7 +470,7 @@ int _tmain(int argc, _TCHAR* argv[])
     {
       if (WaitForSingleObject(worker_threads[threads], 0) != WAIT_OBJECT_0)
       {
-        printf("\r%i Percent calculated. Last write not finished                           ", percent);
+        printf("\r%i Percent calculated. Last write not finished...                        ", percent);
         WaitForSingleObject(worker_threads[threads], INFINITE);
       }
 
@@ -472,9 +479,9 @@ int _tmain(int argc, _TCHAR* argv[])
     }
 
     if (bAsync)
-      printf("\r%i Percent calculated. start async writing data                          ", percent);
+      printf("\r%i Percent calculated. start async writing data...                       ", percent);
     else
-      printf("\r%i Percent calculated. writing data                                      ", percent);
+      printf("\r%i Percent calculated. writing data...                                   ", percent);
 
     // swap cache with write_cache --> write_cache must be written
     if (bAsync)
@@ -507,9 +514,9 @@ int _tmain(int argc, _TCHAR* argv[])
     avgspeed = (int)(sumnonces / summinutes);
 
     if (worker_threads[threads] != NULL)
-      printf("\r%i Percent done. %i nonces/minute (avg %i - write async)                 ", percent, speed, avgspeed);
+      printf("\r%i Percent done. %i nonces/minute (avg %i - write async)...              ", percent, speed, avgspeed);
     else
-      printf("\r%i Percent done. %i nonces/minute (avg %i)                               ", percent, speed, avgspeed);
+      printf("\r%i Percent done. %i nonces/minute (avg %i)...                            ", percent, speed, avgspeed);
     fflush(stdout);
 
     startnonce += staggersize;
@@ -517,7 +524,7 @@ int _tmain(int argc, _TCHAR* argv[])
 
   if (worker_threads[threads] != NULL) // writer-thread started? wait until it has finished
   {
-    printf("\r100 Percent done. Average %i nonces/minute. waiting for last writer      ", avgspeed);
+    printf("\r100 Percent done. Average %i nonces/minute. waiting for last writer...   ", avgspeed);
     WaitForSingleObject(worker_threads[threads], INFINITE);
     CloseHandle(worker_threads[threads]);
     worker_threads[threads] = NULL;
